@@ -1,33 +1,33 @@
 # CNN discriminator
-# reference: https://github.com/williamSYSU/TextGAN-PyTorch/tree/891635af6845edfee382de147faa4fc00c7e90eb/models
-
 import numpy as np
 
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
+import public as pb
+
 
 class Discriminator(nn.Module):
-    def __init__(self, embed_dim, vocab_size, filter_sizes, num_filters, padding_idx, dropout, init_dist, gpu):
+    def __init__(self):
         super(Discriminator, self).__init__()
-        self.embedding_dim = embed_dim
-        self.vocab_size = vocab_size
-        self.padding_idx = padding_idx
-        self.feature_dim = sum(num_filters)
-        self.gpu = gpu
+        self.embedding_dim = pb.dis_embed_dim
+        self.vocab_size = pb.vocab_size
+        self.padding_idx = pb.padding_idx
+        self.feature_dim = sum(pb.dis_num_filters)
+        # self.gpu = pb.gpu
 
         # network
-        self.embeddings = nn.Embedding(vocab_size, embed_dim, padding_idx=padding_idx)
+        self.embeddings = nn.Embedding(pb.vocab_size, pb.dis_embed_dim, padding_idx=pb.padding_idx)
         self.convs = nn.ModuleList([
-            nn.Conv2d(1, n, (f, embed_dim)) for (n, f) in zip(num_filters, filter_sizes)
+            nn.Conv2d(1, n, (f, pb.dis_embed_dim)) for (n, f) in zip(pb.dis_num_filters, pb.dis_filter_sizes)
         ])
         self.highway_unit = nn.Linear(self.feature_dim, self.feature_dim)
-        self.dropout = nn.Dropout(dropout)
+        self.dropout = nn.Dropout(pb.dis_dropout)
         self.fc = nn.Linear(self.feature_dim, 1)
 
         # initialisation
-        self.init_dist = init_dist
+        self.init_dist = pb.dis_init_dist
         self.init_params()
 
     def forward(self, sentence):
@@ -52,6 +52,6 @@ class Discriminator(nn.Module):
             if param.requires_grad and len(param.shape) > 0:
                 stddev = 1 / np.sqrt(param.shape[0])
                 if self.init_dist == 'uniform':
-                    torch.nn.init.uniform_(param, a=-0.05, b=0.05)
+                    torch.nn.init.uniform_(param, a=-pb.unif_init_bound, b=pb.unif_init_bound)
                 elif self.init_dist == 'normal':
-                    torch.nn.init.normal_(param, std=stddev)
+                    torch.nn.init.normal_(param, std=pb.norm_init_std)
