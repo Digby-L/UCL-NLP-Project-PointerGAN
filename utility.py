@@ -18,8 +18,7 @@ from data_loader import MyDataLoader
 
 class DiscriminatorUtility:
     def __init__(self):
-        self.model = Discriminator(pb.dis_embed_dim, pb.vocab_size, pb.dis_filter_sizes, pb.dis_num_filters,
-                                   pb.padding_idx, pb.dis_dropout, pb.dis_init_dist, pb.gpu)
+        self.model = Discriminator()
         if pb.gpu:
             self.model.cuda()
         self.best_model = copy.deepcopy(self.model)
