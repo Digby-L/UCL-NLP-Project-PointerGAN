@@ -2,12 +2,20 @@
 
 import numpy as np
 import torch
-from torch.utils.data import Dataset, DataLoader
+from torch.utils.data import Dataset, TensorDataset, DataLoader
 
 import public as pb
 
 
-class MyDataset(Dataset):
+class GenDataLoader:
+    def __init__(self, text, headline):
+        self.data_loader = DataLoader(dataset=TensorDataset(text, headline),
+                                      batch_size=pb.batch_size,
+                                      shuffle=pb.shuffle,
+                                      drop_last=True)
+
+
+class DisDataset(Dataset):
     def __init__(self, data):
         self.data = data
 
@@ -18,7 +26,7 @@ class MyDataset(Dataset):
         return len(self.data)
 
 
-class MyDataLoader:
+class DisDataLoader:
     def __init__(self, pos_samples, neg_samples):
         '''
         torch.utils.data.DataLoader object
@@ -28,7 +36,7 @@ class MyDataLoader:
         self.pos_samples = pos_samples
         self.neg_samples = neg_samples
 
-        self.data_loader = DataLoader(dataset=MyDataset(self.load()),
+        self.data_loader = DataLoader(dataset=DisDataset(self.load()),
                                       batch_size=pb.batch_size,
                                       shuffle=pb.shuffle,
                                       drop_last=True)
@@ -38,20 +46,13 @@ class MyDataLoader:
         load labelled data, and mix the samples with different labels
         :return: list of dictionaries for each sample point
         '''
-        X = torch.cat((self.pos_samples, self.neg_samples), dim=0).long().detach()
-        y = torch.ones(X.size(0)).long()
+        x = torch.cat((self.pos_samples, self.neg_samples), dim=0).long().detach()
+        y = torch.ones(x.size(0)).long()
         y[self.pos_samples.size(0):] = 0
-
-        mix = torch.randperm(X.size(0))
-        X,y = X[mix], y[mix]
+        # mix +/- labels
+        mix = torch.randperm(x.size(0))
+        x, y = x[mix], y[mix]
         if pb.gpu:
-            X.cuda(), y.cuda()
-        dataset = [{'input':i, 'label':j} for (i, j) in zip(X, y)]
+            x.cuda(), y.cuda()
+        dataset = [{'input':i, 'label':j} for (i, j) in zip(x, y)]
         return dataset
-
-    def random_batch(self):
-        '''
-        choose one batch randomly
-        '''
-        idx = np.random.randint(0, len(self.data_loader) - 1)
-        return list(self.data_loader)[idx]

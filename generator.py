@@ -97,3 +97,33 @@ class Decoder(nn.Module):
 
         prediction = self.out(outputs.squeeze(0))
         return prediction, hidden, cell
+
+
+class Generator(nn.Module):
+    def __init__(self):
+        super().__init__()
+
+        self.encoder = Encoder()
+        self.decoder = Decoder()
+
+    # initial hidden state of LSTM
+    def init_hidden(self, batch_size=pb.batch_size, hid_size=pb.gen_hid_size):
+        h = torch.zeros(1, batch_size, hid_size)
+        c = torch.zeros(1, batch_size, hid_size)
+
+        if pb.gpu:
+            return h.cuda(), c.cuda()
+        else:
+            return h, c
+
+    def forward(self,x, hidden_state):
+        y, h = nn.LSTM(x, hidden_state)
+        return y,h
+    # y dim=(batch_size * seq_len) * vocab_size
+
+    def policy_gradient_loss(self, x, labels, rewards):  # returns via mc-search, dim=batch_size
+        one_hot = F.one_hot(labels, pb.vocab_size).float()
+        y, _ = self.forward(x, self.init_hidden())
+        policy = torch.sum(one_hot * y.view(pb.batch_size, pb.max_seq_len, pb.vocab_size), dim=-1)  # batch_size*seq_len
+
+        return -torch.sum(policy * rewards)    # policy  loss

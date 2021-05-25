@@ -11,20 +11,15 @@ import public as pb
 class Discriminator(nn.Module):
     def __init__(self):
         super(Discriminator, self).__init__()
-        self.embedding_dim = pb.dis_embed_dim
-        self.vocab_size = pb.vocab_size
-        self.padding_idx = pb.padding_idx
-        self.feature_dim = sum(pb.dis_num_filters)
-        # self.gpu = pb.gpu
 
         # network
         self.embeddings = nn.Embedding(pb.vocab_size, pb.dis_embed_dim, padding_idx=pb.padding_idx)
         self.convs = nn.ModuleList([
             nn.Conv2d(1, n, (f, pb.dis_embed_dim)) for (n, f) in zip(pb.dis_num_filters, pb.dis_filter_sizes)
         ])
-        self.highway_unit = nn.Linear(self.feature_dim, self.feature_dim)
+        self.highway_unit = nn.Linear(pb.dis_feature_dim, pb.dis_feature_dim)
         self.dropout = nn.Dropout(pb.dis_dropout)
-        self.fc = nn.Linear(self.feature_dim, 1)
+        self.fc = nn.Linear(pb.dis_feature_dim, 1)
 
         # initialisation
         self.init_dist = pb.dis_init_dist
@@ -40,12 +35,17 @@ class Discriminator(nn.Module):
         convs = [F.relu(conv(embedded)).squeeze(3) for conv in self.convs]  # batch_size * num_filter * length
         pools = [F.max_pool1d(conv, conv.size(2)).squeeze(2) for conv in convs]  # batch_size * num_filter
         pred = torch.cat(pools, 1)  # batch_size * feature_dim
+
         # highway layer
         highway_unit = self.highway_unit(pred)
         pred = torch.sigmoid(highway_unit) * F.relu(highway_unit) + (1. - torch.sigmoid(highway_unit)) * pred
+
         pred = self.fc(self.dropout(pred))  # batch_size
 
         return pred
+
+    def predict(self, sentence):
+        return [1 if y >= 0 else 0 for y in self.forward(sentence)]
 
     def init_params(self):
         for param in self.parameters():

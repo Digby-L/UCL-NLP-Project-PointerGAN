@@ -1,19 +1,16 @@
 # training class for discriminator
 
-#####TO DO#####
-# 1 generator data loader
-# 2 generator utility
-# 3 combine generator and discriminator train
-
 import math
 import torch
 import torch.nn as nn
 import torch.optim as optim
+import torch.nn.functional as F
 import copy
 
 import public as pb
 from discriminator import Discriminator
-from data_loader import MyDataLoader
+from generator import Generator
+from data_loader import DisDataLoader, GenDataLoader
 
 
 class DiscriminatorUtility:
@@ -31,26 +28,26 @@ class DiscriminatorUtility:
         self.test_losses = []
 
     # for general cnn classifier training
-    def run(self, train_data_loader, test_data_loader, max_num_epoch=500):
-        min_loss = math.inf
-        train_losses = []
-        test_losses = []
-        epoch = 0
-        for t in range(max_num_epoch):
-            epoch += 1
-            train_loss, train_accuracy = self.train(train_data_loader)
-            test_loss,  test_accuracy  = self.evaluate(train_data_loader)
-            train_losses.append(train_loss)
-            test_losses.append(test_loss)
+    # def run(self, train_data_loader, test_data_loader, max_num_epoch=500):
+        # min_loss = math.inf
+        # train_losses = []
+        # test_losses = []
+        # epoch = 0
+        # for t in range(max_num_epoch):
+            # epoch += 1
+            # train_loss, train_accuracy = self.train(train_data_loader)
+            # test_loss,  test_accuracy  = self.evaluate(train_data_loader)
+            # train_losses.append(train_loss)
+            # test_losses.append(test_loss)
 
-            if epoch > 10 and max_num_epoch-1 > 10:
-                if test_loss < min_loss:
-                    min_loss = test_loss
-                    self.best_model = copy.deepcopy(self.model)
-                if test_loss - test_losses[t-10] < 1e-3:
-                    self.train_losses = train_losses
-                    self.test_losses = test_losses
-                    return self.best_model
+            # if epoch > 10 and max_num_epoch-1 > 10:
+                # if test_loss < min_loss:
+                    # min_loss = test_loss
+                    # self.best_model = copy.deepcopy(self.model)
+                # if test_loss - test_losses[t-10] < 1e-3:
+                    # self.train_losses = train_losses
+                    # self.test_losses = test_losses
+                    # return self.best_model
 
     # for GAN discriminator training
     # def run(self, pos_data_loader, update_steps, update_epochs):
@@ -81,7 +78,7 @@ class DiscriminatorUtility:
             loss = self.criterion(pred, y)
             self.optimizer.zero_grad()
             loss.backward()
-            torch.nn.utils.clip_grad_norm_(self.model.parameters(), max_norm=pb.max_norm)
+            torch.nn.utils.clip_grad_norm_(self.model.parameters(), max_norm=pb.max_grad_norm)
             self.optimizer.step()
 
             loss += loss.item()
@@ -119,4 +116,79 @@ class DiscriminatorUtility:
         return loss, accuracy
 
     def predict(self, input_sentence):
-        return [1 if y>=0 else 0 for y in self.model(input_sentence)]
+        return [1 if y >= 0 else 0 for y in self.best_model(input_sentence)]
+
+
+class GAN:
+    def __init__(self):
+        self.generator = Generator()
+        self.discriminator = Discriminator()
+
+        # save best models
+        self.best_generator = copy.deepcopy(self.generator)
+        self.best_discriminator = copy.deepcopy(self.discriminator)
+
+        # Criterion
+        self.pretrain_criterion = nn.NLLLoss
+        self.gen_criterion = nn.CrossEntropyLoss
+        self.dis_criterion = nn.BCEWithLogitsLoss()
+
+        # Optimizer
+        self.gen_optimizer = optim.Adam(self.generator.parameters(), lr=pb.gen_lr)
+        self.reinforce_optimizer = optim.Adam(self.generator.parameters(), lr=pb.gen_lr)
+        self.dis_optimizer = optim.Adam(self.discriminator.parameters(), lr=pb.dis_lr)
+
+        self.train_losses = []
+        self.test_losses = []
+
+    def mc_search(self, x):
+        with torch.no_grad():
+            rewards = torch.zeros([pb.rollout_num * pb.max_seq_len, pb.batch_size]).float()
+            if pb.gpu:
+                rewards = rewards.cuda()
+
+            count = 0
+            for i in range(pb.rollout_num):
+                for given_num in range(1, pb.max_seq_len+1):
+                    hidden_state = self.generator.init_hidden()
+                    inp = x[:, :given_num]
+                    out, hidden_state = self.generator.forward(inp, hidden_state)
+                    out = out.view(pb.batch_size, -1, pb.vocab_size)[:, -1]
+
+                    samples = torch.zeros(pb.batch_size, pb.max_seq_len).long()
+                    samples[:, :given_num] = x[:, :given_num]
+
+                    if pb.gpu:
+                        samples = samples.cuda()
+
+                    # monte-carlo search
+                    for j in range(given_num, pb.max_seq_len):
+                        out = torch.multinomial(torch.exp(out), 1)
+                        samples[:,j] = out.view(-1).data
+                        inp = out.view(-1)
+
+                        out, hidden_state = self.generator.forward(inp, hidden_state)
+
+                    y = F.softmax(self.discriminator.forward(samples), dim=-1)
+                    rewards[count] = y[:,1]
+                    count += 1
+
+        # rewards = torch.mean(rewards, dim=0)
+        rewards = torch.mean(rewards.view(pb.batch_size, pb.max_seq_len, pb.rollout_num), dim=-1)
+
+        return rewards
+
+    def train_gen(self, data_loader):
+        loss = 0
+        for i, batch in enumerate(data_loader):
+
+
+    def train_dis(self):
+        pass
+
+    def train_gan(self):
+        pass
+
+
+
+
