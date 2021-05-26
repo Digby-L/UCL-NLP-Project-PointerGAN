@@ -121,7 +121,7 @@ class Generator(nn.Module):
         return y,h
     # y dim=(batch_size * seq_len) * vocab_size
 
-    def policy_gradient_loss(self, x, labels, rewards):  # returns via mc-search, dim=batch_size
+    def policy_gradient_loss(self, x, labels, rewards):  # rewards via mc-search, dim=batch_size
         one_hot = F.one_hot(labels, pb.vocab_size).float()
         y, _ = self.forward(x, self.init_hidden())
         policy = torch.sum(one_hot * y.view(pb.batch_size, pb.max_seq_len, pb.vocab_size), dim=-1)  # batch_size*seq_len

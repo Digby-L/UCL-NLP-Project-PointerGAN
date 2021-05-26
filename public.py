@@ -7,7 +7,8 @@ shuffle = False
 batch_size = 64  # 48
 padding_idx = 0
 
-# TODO: set from data
+# TODO
+num_samples = 0
 vocab_size = 0
 max_seq_len = 0
 
@@ -22,19 +23,24 @@ max_grad_norm = 5.0
 
 
 # for generator
+gen_pretrain_epochs = 50
 gen_emb_size = 32
 gen_hid_size = 128
 gen_lr = 0.01
+
 rollout_num = 4  # 16
 
+gan_epochs = 1000
 
 # for discriminator
 dis_embed_dim = 64
 dis_filter_sizes = [2, 3, 5, 8, 12]
 dis_num_filters = [100, 200, 200, 100, 160]
 dis_feature_dim = sum(dis_num_filters)
+
 dis_dropout = 0.25
 dis_init_dist = 'uniform'
 dis_lr = 1e-3
-dis_update_steps = 5
-dis_update_epoch = 5
+
+d_steps = 5
+k = 10  # discriminator update epochs
