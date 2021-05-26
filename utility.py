@@ -1,6 +1,4 @@
 # training class for discriminator
-
-import math
 import copy
 import torch
 import torch.nn as nn
@@ -10,20 +8,20 @@ from torch.nn.utils import clip_grad_norm_
 
 import public as pb
 from discriminator import Discriminator
-from generator import Generator
+from generator import Generator, LSTM
 from data_loader import GenDataLoader, DisDataLoader
 
 
 class GAN:
     def __init__(self):
-        self.generator = Generator()
+        self.generator = LSTM()
         self.discriminator = Discriminator()
         if pb.gpu:
             self.generator.cuda(), self.discriminator.cuda()
 
         # Criterion
-        self.pretrain_criterion = nn.NLLLoss
-        self.gen_criterion = nn.CrossEntropyLoss
+        self.pretrain_criterion = nn.NLLLoss()
+        self.gen_criterion = nn.CrossEntropyLoss()
         self.dis_criterion = nn.BCEWithLogitsLoss()
 
         # Optimizer
@@ -63,7 +61,6 @@ class GAN:
                     rewards[count] = y[:,1]
                     count += 1
 
-        # rewards = torch.mean(rewards, dim=0)
         rewards = torch.mean(rewards.view(pb.batch_size, pb.max_seq_len, pb.rollout_num), dim=-1)
 
         return rewards
@@ -76,7 +73,7 @@ class GAN:
                 x.cuda(), y.cuda()
 
             h = self.generator.init_hidden()
-            pred_y = self.generator.forward(x,h)
+            pred_y, _ = self.generator.forward(x,h)
             l = self.gen_criterion(pred_y, y.view(-1))
             self.gen_optimizer.zero_grad()
             l.backward()
@@ -126,7 +123,11 @@ class GAN:
         print('adversarial training begins')
         for j in range(pb.gan_epochs):
             y = self.generator.sample(pb.batch_size)
-            x = y
+            x = torch.zeros(y.size()).long()
+            x[:, 0] = pb.start_letter_idx
+            x[:,1:] = y[:, :pb.max_seq_len-1]
+            if pb.gpu:
+                y.cuda(), x.cuda()
 
             rewards = self.mc_search(y)
             pg_loss = self.generator.policy_gradient_loss(x, y, rewards)
@@ -143,5 +144,4 @@ class GAN:
 
                 for epoch in range(pb.k):
                     accuracy = self.train_dis(mixed)
-
-            print('discriminator loss: {}'.format(accuracy))
+                    print(accuracy)

@@ -1,6 +1,4 @@
-# data loader for discriminator using
-
-import numpy as np
+# data loader for GAN training
 import torch
 from torch.utils.data import Dataset, TensorDataset, DataLoader
 

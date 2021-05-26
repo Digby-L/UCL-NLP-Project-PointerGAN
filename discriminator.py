@@ -1,6 +1,4 @@
 # CNN discriminator
-import numpy as np
-
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -50,7 +48,6 @@ class Discriminator(nn.Module):
     def init_params(self):
         for param in self.parameters():
             if param.requires_grad and len(param.shape) > 0:
-                stddev = 1 / np.sqrt(param.shape[0])
                 if self.init_dist == 'uniform':
                     torch.nn.init.uniform_(param, a=-pb.unif_init_bound, b=pb.unif_init_bound)
                 elif self.init_dist == 'normal':

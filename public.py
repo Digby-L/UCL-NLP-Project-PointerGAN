@@ -6,11 +6,12 @@ import torch
 shuffle = False
 batch_size = 64  # 48
 padding_idx = 0
+start_letter_idx = 1
 
-# TODO
-num_samples = 0
-vocab_size = 0
-max_seq_len = 0
+num_samples = 610
+vocab_size = 7550
+input_seq_len = 53
+output_seq_len = 197
 
 if_gpu = False
 gpu = if_gpu and torch.cuda.is_available()
