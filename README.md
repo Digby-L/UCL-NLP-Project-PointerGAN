@@ -13,3 +13,12 @@ reference:
 2 https://arxiv.org/pdf/1609.05473.pdf seqGAN
 
 3 https://arxiv.org/pdf/1711.09357.pdf GAN summarization
+
+4 [Huszar, F. 2015] ´ Huszar, F. 2015. How (not) to train your ´
+generative model: Scheduled sampling, likelihood, adversary?
+arXiv:1511.05101.
+
+5 [Williams 1992] Williams, R. J. 1992. Simple statistical gradientfollowing algorithms for connectionist reinforcement learning.
+Machine learning 8(3-4):229–256.           REINFORCE algorithm
+
+6 [Glynn 1990] Glynn, P. W. 1990. Likelihood ratio gradient estimation for stochastic systems.          log-gradient
