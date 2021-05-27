@@ -8,6 +8,8 @@ Original Repo here: https://github.com/mahnazkoupaee/WikiHow-Dataset
 
 reference:
 
-1 https://arxiv.org/pdf/1609.05473.pdf
+1 https://arxiv.org/abs/1406.2661 GAN
 
-2 https://arxiv.org/pdf/1711.09357.pdf
+2 https://arxiv.org/pdf/1609.05473.pdf seqGAN
+
+3 https://arxiv.org/pdf/1711.09357.pdf GAN summarization
