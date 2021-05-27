@@ -21,4 +21,4 @@ arXiv:1511.05101.
 5 [Williams 1992] Williams, R. J. 1992. Simple statistical gradientfollowing algorithms for connectionist reinforcement learning.
 Machine learning 8(3-4):229–256.           REINFORCE algorithm
 
-6 [Glynn 1990] Glynn, P. W. 1990. Likelihood ratio gradient estimation for stochastic systems.          log-gradient
+6 [Glynn 1990] Glynn, P. W. 1990. Likelihood ratio gradient estimation for stochastic systems.          log-gradient / [Sutton et al. 2000] Sutton, R. S.; McAllester, D. A.; Singh, S. P.; and Mansour, Y. 2000. Policy gradient methods for reinforcement learning with function approximation. In NIPS, 1057–1063.
