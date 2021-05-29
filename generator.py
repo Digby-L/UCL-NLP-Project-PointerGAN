@@ -1,4 +1,5 @@
 # pointer generator
+from numpy import random
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -39,48 +40,92 @@ def init_wt_unif(wt):
 
 
 class Encoder(nn.Module):
-    def __init__(self):
+    def __init__(self, embeddings):
         super().__init__()
+        self.emb_size = pb.gen_emb_size
+        self.hid_size = pb.gen_hid_size
+        self.input_size = pb.vocab_size
+        self.dropout = pb.dropout
 
-        self.embedding = nn.Embedding(pb.input_seq_len, pb.gen_emb_size)
-        init_wt_normal(self.embedding.weight)
-        self.lstm = nn.LSTM(pb.gen_emb_size, pb.gen_hid_size, batch_first=True)
-        init_lstm_wt(self.lstm)
+        self.embedding = embeddings
+        self.lstm = nn.LSTM(self.emb_size, self.hid_size, num_layers=2, dropout=self.dropout)
 
-    def forward(self, x):
-        embedded = self.embedding(x)
-        outputs, state = self.lstm(embedded)
+    def forward(self, x, x_length):
+        embedded = torch.tensor([[self.embedding[i] for i in x[:, seq]] for seq in range(x.shape[1])]).permute(1, 0, 2)
+        embedded = pack_padded_sequence(embedded, list(x_length), batch_first=False, enforce_sorted=False)
+        outputs, (hidden, cell) = self.lstm(embedded)
+        outputs, _ = pad_packed_sequence(outputs)
 
-        return state
+        return hidden, cell
 
 
 class Decoder(nn.Module):
-    def __init__(self):
+    def __init__(self, embeddings):
         super().__init__()
+        self.emb_size = pb.gen_emb_size
+        self.hid_size = pb.gen_hid_size
+        self.output_size = pb.vocab_size
+        self.dropout = pb.dropout
 
-        self.embedding = nn.Embedding(pb.output_seq_len, pb.gen_emb_size)
-        init_wt_normal(self.embedding.weight)
-        self.lstm = nn.LSTM(pb.gen_emb_size, pb.gen_hid_size, batch_first=True)
-        init_lstm_wt(self.lstm)
-        self.out = nn.Linear(pb.gen_hid_size, pb.output_seq_len, bias=True)
+        self.embedding = embeddings
+        self.lstm = nn.LSTM(self.emb_size, self.hid_size, num_layers=2, dropout=self.dropout)
+        self.out = nn.Linear(self.hid_size, self.output_size, bias=True)
 
-    def forward(self, output, state):
-        embedded = self.embedding(output.unsqueeze(0))
+    def forward(self, output, hidden, cell):
+        embedded = torch.tensor([self.embedding[x] for x in output]).float().unsqueeze(0)
 
-        outputs, state = self.lstm(embedded, state)
+        outputs, (hidden, cell) = self.lstm(embedded, (hidden, cell))
 
         prediction = self.out(outputs.squeeze(0))
-        return prediction, state
+
+        return prediction, hidden, cell
 
 
-class Generator(nn.Module):
-    def __init__(self):
+class Seq2Seq(nn.Module):
+    def __init__(self, embeddings):
         super().__init__()
+        self.embedding = embeddings
+        self.encoder = Encoder(self.embedding)
+        self.decoder = Decoder(self.embedding)
 
-        self.encoder = Encoder()
-        self.decoder = Decoder()
+    def forward(self, text_batch, text_batch_len, headline_batch,
+                teacher_forcing_ratio: float = 0.5, need_hidden=False):
+        max_len, batch_size = headline_batch.shape
 
-        self.encoder.embedding.weight = self.decoder.embedding.weight
+        # tensor to store decoder's output
+        outputs = torch.zeros(max_len, batch_size, pb.vocab_size)
+
+        # last hidden & cell state of the encoder is used as the decoder's initial hidden state
+        hidden, cell = self.encoder(text_batch, text_batch_len)
+
+        hl_batch_i = headline_batch[0]
+
+        for i in range(1, max_len):
+            prediction, hidden, cell = self.decoder(hl_batch_i, hidden, cell)
+            outputs[i] = prediction
+
+            if random.random() < teacher_forcing_ratio:
+                hl_batch_i = headline_batch[i]
+            else:
+                hl_batch_i = prediction.argmax(1)
+
+        if not need_hidden:
+            return outputs
+        else:
+            return outputs, (hidden, cell)
+
+    def predict(self, text_batch, text_batch_len, headline_batch):
+        outputs = self.forward(text_batch, text_batch_len, headline_batch, teacher_forcing_ratio=0)
+
+        return torch.argmax(torch.tensor(outputs), dim=2)
+
+    # policy gradient loss for GAN use
+    def policy_gradient_loss(self, text_batch, text_batch_len, headline_batch, rewards):  # rewards via mc-search, dim=batch_size
+        one_hot = F.one_hot(headline_batch, pb.output_vocab_size).float()
+        y, _ = self.forward(text_batch, text_batch_len, headline_batch)
+        policy = torch.sum(one_hot * y.view(pb.batch_size, pb.output_seq_len, pb.output_vocab_size), dim=-1)  # batch_size*seq_len
+
+        return -torch.sum(policy * rewards)    # policy  loss
 
     # initial hidden state of LSTM
     def init_hidden(self, batch_size=pb.batch_size, hid_size=pb.gen_hid_size):
@@ -91,86 +136,3 @@ class Generator(nn.Module):
             return h.cuda(), c.cuda()
         else:
             return h, c
-
-    def forward(self,x, hidden_state):
-        y, h = nn.LSTM(x, hidden_state)
-        return y,h
-    # y dim=(batch_size * seq_len) * vocab_size
-
-    def policy_gradient_loss(self, x, labels, rewards):  # rewards via mc-search, dim=batch_size
-        one_hot = F.one_hot(labels, pb.vocab_size).float()
-        y, _ = self.forward(x, self.init_hidden())
-        policy = torch.sum(one_hot * y.view(pb.batch_size, pb.max_seq_len, pb.vocab_size), dim=-1)  # batch_size*seq_len
-
-        return -torch.sum(policy * rewards)    # policy  loss
-
-
-class LSTM(nn.Module):
-    def __init__(self):
-        super().__init__()
-
-        self.embedding = nn.Embedding(pb.vocab_size, pb.gen_emb_size, padding_idx=0)
-        init_wt_normal(self.embedding.weight)
-        self.lstm = nn.LSTM(pb.gen_emb_size, pb.gen_hid_size, batch_first=True)
-        init_lstm_wt(self.lstm)
-
-        # reduce the bidirectional
-        # self.reduce_h = nn.Linear(pb.gen_hid_size * 2, pb.gen_hid_size)
-        # init_linear_wt(self.reduce_h)
-        # self.reduce_c = nn.Linear(pb.gen_hid_size * 2, pb.gen_hid_size)
-        # init_linear_wt(self.reduce_c)
-
-        self.out1 = nn.Linear(pb.gen_hid_size, pb.max_seq_len)
-        init_linear_wt(self.out1)
-        self.out2 = nn.LogSoftmax(dim=-1)
-
-    def forward(self, x, h):
-        emb = self.embedding(x)
-        if len(x.size()) == 1:
-            emb = emb.unsqueeze(1)
-        pred, h = self.lstm(emb, h)
-
-        # hidden, cell = h
-        # hidden = torch.cat((hidden[0],hidden[1]),dim=-1)
-        # cell = torch.cat((cell[0],cell[1]),dim=-1)
-        # reduced_hidden = F.relu(self.reduce_h(hidden))
-        # reduced_cell = F.relu(self.reduce_c(cell))
-        # pred = pred.contiguous().view(-1, pb.gen_hid_size)
-        y = self.out2(self.out1(pred))
-        return y, h
-
-    def sample(self, num_samples):
-        num_batch = num_samples // pb.batch_size+1 if num_samples!=pb.batch_size else 1
-        samples = torch.zeros(num_batch*pb.batch_size, pb.max_seq_len).long()
-
-        for b in range(num_batch):
-            h = self.init_hidden(pb.batch_size)
-            x = torch.LongTensor([pb.start_letter_idx] * pb.batch_size)
-            if self.gpu:
-                x = x.cuda()
-
-            for i in range(pb.max_seq_len):
-                y, h = self.forward(x, h)
-                next_token = torch.multinomial(torch.exp(y), 1)
-                samples[b*pb.batch_size:(b+1)*pb.batch_size, i] = next_token.view(-1)
-                x = next_token.view(-1)
-        samples = samples[:num_samples]
-
-        return samples
-
-    # initial hidden state of LSTM
-    def init_hidden(self, batch_size=pb.batch_size, hid_size=pb.gen_hid_size, num_direction=1):
-        h = torch.zeros(num_direction, batch_size, hid_size)
-        c = torch.zeros(num_direction, batch_size, hid_size)
-
-        if pb.gpu:
-            return h.cuda(), c.cuda()
-        else:
-            return h, c
-
-    def policy_gradient_loss(self, x, labels, rewards):  # rewards via mc-search, dim=batch_size
-        one_hot = F.one_hot(labels, pb.vocab_size).float()
-        y, _ = self.forward(x, self.init_hidden())
-        policy = torch.sum(one_hot * y.view(pb.batch_size, pb.max_seq_len, pb.vocab_size), dim=-1)  # batch_size*seq_len
-
-        return -torch.sum(policy * rewards)    # policy  loss

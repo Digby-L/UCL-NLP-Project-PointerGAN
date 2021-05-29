@@ -1,16 +1,8 @@
 # data loader for GAN training
 import torch
-from torch.utils.data import Dataset, TensorDataset, DataLoader
+from torch.utils.data import Dataset, DataLoader
 
 import public as pb
-
-
-class GenDataLoader:
-    def __init__(self, text, headline):
-        self.data_loader = DataLoader(dataset=TensorDataset(text, headline),
-                                      batch_size=pb.batch_size,
-                                      shuffle=pb.shuffle,
-                                      drop_last=True)
 
 
 class DisDataset(Dataset):
