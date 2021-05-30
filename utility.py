@@ -156,7 +156,7 @@ class GAN:
                 negative = self.generator.predict(text_train_pad, text_train_lengths, positive)
                 negative = torch.transpose(negative, 0, 1)  # due to lstm dimension reverse issue
                 dis_pred_y = self.discriminator.forward(negative).view(-1)
-                print(dis_pred_y)
+
                 dis_scale = torch.sum(1/dis_pred_y)
 
                 # combine two losses
