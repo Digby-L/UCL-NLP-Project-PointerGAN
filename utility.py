@@ -14,8 +14,8 @@ from data_loader import DisDataLoader
 
 
 class GAN:
-    def __init__(self, embedding):
-        self.generator = Seq2Seq(embedding)
+    def __init__(self, text_embedding, headline_embedding):
+        self.generator = Seq2Seq(text_embedding, headline_embedding)
         self.discriminator = Discriminator()
         if pb.gpu:
             self.generator.cuda(), self.discriminator.cuda()
@@ -84,7 +84,7 @@ class GAN:
 
             l = self.gen_criterion(outputs_flatten, hl_flatten)
             self.gen_optimizer.zero_grad()
-            l.backward(retain_graph=True)
+            l.backward()
             clip_grad_norm_(self.generator.parameters(), max_norm=pb.max_grad_norm)
             self.gen_optimizer.step()
             loss += l.item()
@@ -157,10 +157,10 @@ class GAN:
                 negative = torch.transpose(negative, 0, 1)  # due to lstm dimension reverse issue
                 dis_pred_y = self.discriminator.forward(negative).view(-1)
 
-                dis_scale = torch.sum(1/dis_pred_y)
+                dis_loss = self.dis_criterion(dis_pred_y, torch.ones_like(dis_pred_y).view(-1))
 
                 # combine two losses
-                adv_l = dis_scale * ce_loss
+                adv_l = dis_loss * ce_loss
 
                 self.gen_optimizer.zero_grad()
                 adv_l.backward(retain_graph=True)
@@ -170,7 +170,7 @@ class GAN:
 
                 for step in range(pb.d_steps):
                     # random sample true headline batch_size
-                    idx = torch.tensor(random.randint(0, pb.num_samples, size=pb.batch_size)).long()
+                    idx = torch.tensor(random.randint(0, pb.num_samples, size=pb.batch_size*5)).long()
 
                     positive = headline_pad[idx, :]
                     samples = text_pad[idx, :]
@@ -180,11 +180,10 @@ class GAN:
                     negative = torch.transpose(negative, 0, 1)  # due to lstm dimension reverse issue
                     mixed = DisDataLoader(positive, negative)
 
-                    dis_best = []
                     for epoch in range(pb.k):
                         accuracy = self.train_dis(mixed)
-                        dis_best.append(accuracy)
-                    print(max(dis_best))
+        torch.save(self.generator.state_dict(), 'model.pt')
+
 
     # debugging...
     # adversarial training with policy gradient

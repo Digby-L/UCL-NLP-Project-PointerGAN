@@ -42,9 +42,9 @@ def init_wt_unif(wt):
 class Encoder(nn.Module):
     def __init__(self, embeddings):
         super().__init__()
-        self.emb_size = pb.gen_emb_size
         self.hid_size = pb.gen_hid_size
         self.input_size = pb.vocab_size
+        self.emb_size = pb.gen_emb_size
         self.dropout = pb.dropout
 
         self.embedding = embeddings
@@ -62,9 +62,9 @@ class Encoder(nn.Module):
 class Decoder(nn.Module):
     def __init__(self, embeddings):
         super().__init__()
-        self.emb_size = pb.gen_emb_size
         self.hid_size = pb.gen_hid_size
-        self.output_size = pb.vocab_size
+        self.output_size = pb.output_vocab_size
+        self.emb_size= pb.gen_emb_size
         self.dropout = pb.dropout
 
         self.embedding = embeddings
@@ -82,18 +82,19 @@ class Decoder(nn.Module):
 
 
 class Seq2Seq(nn.Module):
-    def __init__(self, embeddings):
+    def __init__(self, text_embeddings, headline_embeddings):
         super().__init__()
-        self.embedding = embeddings
-        self.encoder = Encoder(self.embedding)
-        self.decoder = Decoder(self.embedding)
+        self.text_embedding = text_embeddings
+        self.headline_embedding = headline_embeddings
+        self.encoder = Encoder(self.text_embedding)
+        self.decoder = Decoder(self.headline_embedding)
 
     def forward(self, text_batch, text_batch_len, headline_batch,
                 teacher_forcing_ratio: float = 0.5, need_hidden=False):
         max_len, batch_size = headline_batch.shape
 
         # tensor to store decoder's output
-        outputs = torch.zeros(max_len, batch_size, pb.vocab_size)
+        outputs = torch.zeros(max_len, batch_size, pb.output_vocab_size)
 
         # last hidden & cell state of the encoder is used as the decoder's initial hidden state
         hidden, cell = self.encoder(text_batch, text_batch_len)
