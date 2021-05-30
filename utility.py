@@ -29,6 +29,7 @@ class GAN:
         self.reinforce_optimizer = optim.Adam(self.generator.parameters(), lr=pb.gen_lr)
         self.dis_optimizer = optim.Adam(self.discriminator.parameters(), lr=pb.dis_lr)
 
+    # debugging...
     def mc_search(self, x):
         with torch.no_grad():
             rewards = torch.zeros([pb.rollout_num * pb.output_seq_len, pb.batch_size]).float()
@@ -83,7 +84,7 @@ class GAN:
 
             l = self.gen_criterion(outputs_flatten, hl_flatten)
             self.gen_optimizer.zero_grad()
-            l.backward()
+            l.backward(retain_graph=True)
             clip_grad_norm_(self.generator.parameters(), max_norm=pb.max_grad_norm)
             self.gen_optimizer.step()
             loss += l.item()
@@ -102,7 +103,7 @@ class GAN:
             pred_y = self.discriminator.forward(x).view(-1)
             loss = self.dis_criterion(pred_y, y.float())
             self.dis_optimizer.zero_grad()
-            loss.backward()
+            loss.backward(retain_graph=True)
             clip_grad_norm_(self.discriminator.parameters(), max_norm=pb.max_grad_norm)
             self.dis_optimizer.step()
 
@@ -111,7 +112,82 @@ class GAN:
 
         return accuracy/count
 
+    # compromised version of adversarial training w/o policy gradient
     def train_gan(self, data_loader, text_pad, headline_pad, text_len):
+        ##### pre-train #####
+        print('generator pre-training via maximum likelihood begins')
+        for i in range(pb.gen_pretrain_epochs):
+            _ = self.train_gen(data_loader)
+
+        print('discriminator pre-training begins')
+        for step in range(pb.d_steps):
+            # random sample true headline batch_size
+            idx = torch.tensor(random.randint(0, pb.num_samples, size=pb.batch_size)).long()
+
+            positive = headline_pad[idx, :]
+            samples = text_pad[idx, :]
+            samples = torch.transpose(samples, 0, 1)   # due to lstm dimension reverse issue
+            samples_len = text_len[idx]
+            negative = self.generator.predict(samples, samples_len, torch.transpose(positive, 0, 1))
+            negative = torch.transpose(negative, 0, 1)   # due to lstm dimension reverse issue
+            mixed = DisDataLoader(positive, negative)
+
+            for epoch in range(pb.k):
+                _ = self.train_dis(mixed)
+
+        print('==============================================')
+        print('adversarial training begins')
+        for j in range(pb.gan_epochs):
+            for text_train_pad, headline_train_pad, text_train_lengths, headline_train_lengths in data_loader:
+                text_train_pad = torch.transpose(text_train_pad, 0, 1)
+                headline_train_pad = torch.transpose(headline_train_pad, 0, 1)
+                text_train_pad = text_train_pad[:text_train_lengths.max()]
+                headline_train_pad = headline_train_pad[:headline_train_lengths.max()]
+                if pb.gpu:
+                    text_train_pad.cuda(), headline_train_pad.cuda(), text_train_lengths.cuda()
+
+                pred_y = self.generator.forward(text_train_pad, text_train_lengths, headline_train_pad)
+                outputs_flatten = pred_y[1:].view(-1, pred_y.shape[-1])
+                hl_flatten = headline_train_pad[1:].reshape(-1)
+
+                ce_loss = self.gen_criterion(outputs_flatten, hl_flatten)
+
+                positive = headline_train_pad
+                negative = self.generator.predict(text_train_pad, text_train_lengths, torch.transpose(positive, 0, 1))
+                negative = torch.transpose(negative, 0, 1)  # due to lstm dimension reverse issue
+                dis_pred_y = self.discriminator.forward(negative).view(-1)
+                dis_y = -1 * torch.ones_like(dis_pred_y)
+
+                d_loss = self.dis_criterion(dis_pred_y, dis_y.float())
+
+                # combine two losses
+                adv_l = d_loss * ce_loss
+
+                self.gen_optimizer.zero_grad()
+                adv_l.backward(retain_graph=True)
+                self.gen_optimizer.step()
+
+                print('generator loss: {}'.format(adv_l))
+
+                for step in range(pb.d_steps):
+                    # random sample true headline batch_size
+                    idx = torch.tensor(random.randint(0, pb.num_samples, size=pb.batch_size)).long()
+
+                    positive = headline_pad[idx, :]
+                    samples = text_pad[idx, :]
+                    samples = torch.transpose(samples, 0, 1)  # due to lstm dimension reverse issue
+                    samples_len = text_len[idx]
+                    negative = self.generator.predict(samples, samples_len, torch.transpose(positive, 0, 1))
+                    negative = torch.transpose(negative, 0, 1)  # due to lstm dimension reverse issue
+                    mixed = DisDataLoader(positive, negative)
+
+                    for epoch in range(pb.k):
+                        accuracy = self.train_dis(mixed)
+                        print(accuracy)
+
+    # debugging...
+    # adversarial training with policy gradient
+    def train_gan_rl(self, data_loader, text_pad, headline_pad, text_len):
         ##### pre-train #####
         print('generator pre-training via maximum likelihood begins')
         for i in range(pb.gen_pretrain_epochs):
@@ -157,7 +233,7 @@ class GAN:
                 l = pg_loss * pb.adv_lambda + ce_loss * (1 - pb.adv_lambda)
 
                 self.reinforce_optimizer.zero_grad()
-                l.backward()
+                l.backward(retain_graph=True)
                 self.reinforce_optimizer.step()
 
                 print('generator loss: {}'.format(l))
@@ -165,7 +241,6 @@ class GAN:
             for step in range(pb.d_steps):
                 idx = random.randint(0, pb.num_samples, size=pb.batch_size)
                 positive = headline[torch.tensor(idx).long(), :]
-                # positive = data_loader.headline
                 negative = self.generator.sample(pb.batch_size, text)
                 mixed = DisDataLoader(positive, negative)
 

@@ -119,6 +119,7 @@ class Seq2Seq(nn.Module):
 
         return torch.argmax(torch.tensor(outputs), dim=2)
 
+    # debugging...
     # policy gradient loss for GAN use
     def policy_gradient_loss(self, text_batch, text_batch_len, headline_batch, rewards):  # rewards via mc-search, dim=batch_size
         one_hot = F.one_hot(headline_batch, pb.output_vocab_size).float()

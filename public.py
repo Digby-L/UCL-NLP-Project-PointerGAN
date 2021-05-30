@@ -5,7 +5,7 @@ gpu = if_gpu and torch.cuda.is_available()
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 # basic hyper-parameters
-shuffle = False
+shuffle = False   # shuffle will cause sequence lengths disordered
 batch_size = 64  # 48
 padding_idx = 0
 start_letter_idx = 1
