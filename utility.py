@@ -153,15 +153,14 @@ class GAN:
                 ce_loss = self.gen_criterion(outputs_flatten, hl_flatten)
 
                 positive = headline_train_pad
-                negative = self.generator.predict(text_train_pad, text_train_lengths, torch.transpose(positive, 0, 1))
+                negative = self.generator.predict(text_train_pad, text_train_lengths, positive)
                 negative = torch.transpose(negative, 0, 1)  # due to lstm dimension reverse issue
                 dis_pred_y = self.discriminator.forward(negative).view(-1)
-                dis_y = -1 * torch.ones_like(dis_pred_y)
-
-                d_loss = self.dis_criterion(dis_pred_y, dis_y.float())
+                print(dis_pred_y)
+                dis_scale = torch.sum(1/dis_pred_y)
 
                 # combine two losses
-                adv_l = d_loss * ce_loss
+                adv_l = dis_scale * ce_loss
 
                 self.gen_optimizer.zero_grad()
                 adv_l.backward(retain_graph=True)
@@ -181,9 +180,11 @@ class GAN:
                     negative = torch.transpose(negative, 0, 1)  # due to lstm dimension reverse issue
                     mixed = DisDataLoader(positive, negative)
 
+                    dis_best = []
                     for epoch in range(pb.k):
                         accuracy = self.train_dis(mixed)
-                        print(accuracy)
+                        dis_best.append(accuracy)
+                    print(max(dis_best))
 
     # debugging...
     # adversarial training with policy gradient
