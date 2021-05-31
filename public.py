@@ -12,7 +12,7 @@ start_letter_idx = 1
 
 # data information
 # parameters below needs change for different dataset
-num_samples = 62996
+num_samples = 62996   # total number of 
 vocab_size = 57237   # vocab for text
 output_vocab_size = 18431    # vocab for headline
 input_seq_len = 202   # max seq length of text
