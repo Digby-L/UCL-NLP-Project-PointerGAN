@@ -162,6 +162,14 @@ class GAN:
                 # combine two losses
                 adv_l = dis_loss * ce_loss
 
+                # RL-based training
+                # rewards = self.mc_search(text_train_pad)
+                # l = self.generator.policy_gradient_loss(self, text_train_pad, text_train_len,
+                #                                                headline_train_pad, rewards)
+
+                # add trade-off version
+                # adv_l = pb.adv_lambda * l + (1-pb.adv_lambda) * self.gen_criterion(outputs_flatten, hl_flatten)
+
                 self.gen_optimizer.zero_grad()
                 adv_l.backward(retain_graph=True)
                 self.gen_optimizer.step()
@@ -220,8 +228,15 @@ class GAN:
                 if pb.gpu:
                     text_train_pad.cuda(), headline_train_pad.cuda(), text_train_lengths.cuda()
 
-                rewards = self.mc_search(y)
-                pg_loss = self.generator.policy_gradient_loss(x, x_batch_len, y, rewards)
+                rewards = self.mc_search(headline_train_pad)
+                pg_loss = self.generator.policy_gradient_loss(text_train_pad, text_train_lengths,
+                                                              headline_train_pad, rewards)
+
+                pred_y = self.generator.forward(text_train_pad, text_train_lengths, headline_train_pad)
+                outputs_flatten = pred_y[1:].view(-1, pred_y.shape[-1])
+                hl_flatten = headline_train_pad[1:].reshape(-1)
+                # add trade-off version
+                adv_l = pb.adv_lambda * pg_loss + (1-pb.adv_lambda) * self.gen_criterion(outputs_flatten, hl_flatten)
 
                 pred_y = self.generator.forward(text_train_pad, text_train_lengths, headline_train_pad)
                 outputs_flatten = pred_y[1:].view(-1, pred_y.shape[-1])
@@ -240,8 +255,8 @@ class GAN:
 
             for step in range(pb.d_steps):
                 idx = random.randint(0, pb.num_samples, size=pb.batch_size)
-                positive = headline[torch.tensor(idx).long(), :]
-                negative = self.generator.sample(pb.batch_size, text)
+                positive = headline_pad[torch.tensor(idx).long(), :]
+                negative = self.generator.sample(pb.batch_size, text_pad)
                 mixed = DisDataLoader(positive, negative)
 
                 for epoch in range(pb.k):

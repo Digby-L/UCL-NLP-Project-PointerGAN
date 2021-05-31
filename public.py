@@ -12,11 +12,11 @@ start_letter_idx = 1
 
 # data information
 # parameters below needs change for different dataset
-num_samples = 62996   # total number of 
-vocab_size = 57237   # vocab for text
-output_vocab_size = 18431    # vocab for headline
-input_seq_len = 202   # max seq length of text
-output_seq_len = 76    # max seq length of headline
+num_samples = 611   # total number of samples
+vocab_size = 6497   # vocab for text
+output_vocab_size = 1386    # vocab for headline
+input_seq_len = 195   # max seq length of text
+output_seq_len = 50    # max seq length of headline
 
 # dropout rate for seq2seq
 dropout = 0.1
@@ -30,11 +30,11 @@ max_grad_norm = 5.0
 
 
 # for generator
-gen_pretrain_epochs = 10  # small # for test, 50
+gen_pretrain_epochs = 15  #
 gan_epochs = 100  # small # for test, 1000
 gen_emb_size = 200
 gen_hid_size = 128
-gen_lr = 1e-3
+gen_lr = 1e-2
 # for monte-carlo search
 rollout_num = 4  # 16
 # while gan training
@@ -49,7 +49,7 @@ dis_feature_dim = sum(dis_num_filters)
 
 dis_dropout = 0.5
 dis_init_dist = 'uniform'
-dis_lr = 1e-3
+dis_lr = 1e-2
 # while adversarial training
 d_steps = 5
-k = 10  # discriminator update epochs
+k = 8  # discriminator update epochs
