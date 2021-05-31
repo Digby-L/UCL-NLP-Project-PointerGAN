@@ -173,8 +173,8 @@ class Decoder(nn.Module):
             h_decoder, c_decoder = h_c_1
             h_c_hat = torch.cat((h_decoder.view(-1, self.hid_size),
                                  c_decoder.view(-1, self.hid_size)), 1)  # B x 2*hid_size
-            context_vec, _, coverage_new = self.attn_net(h_c_hat, enc_outputs, enc_feature,
-                                                         enc_padding_mask, coverage)
+            context_vec, _, coverage_new = self.attn_net.forward(h_c_hat, enc_outputs, enc_feature,
+                                                                 enc_padding_mask, coverage)
             coverage = coverage_new
 
         max_oov_len = torch.max(enc_oov_len)
@@ -187,8 +187,8 @@ class Decoder(nn.Module):
         h_decoder, c_decoder = h_c
         h_c_hat = torch.cat((h_decoder.view(-1, self.hid_size),
                              c_decoder.view(-1, self.hid_size)), 1)  # B x 2*hid_size
-        context_vec, attn_dist, coverage_new = self.attn_net(h_c_hat, enc_outputs, enc_feature,
-                                                             enc_padding_mask, coverage)
+        context_vec, attn_dist, coverage_new = self.attn_net.forward(h_c_hat, enc_outputs, enc_feature,
+                                                                     enc_padding_mask, coverage)
 
         if self.training or step > 0:
             coverage = coverage_new
@@ -290,9 +290,9 @@ class Pointer_Generator(nn.Module):
         outputs = torch.zeros(max_len, batch_size, headline_vocab_size)
 
         # last hidden & cell state of the encoder is used as the decoder's initial hidden state
-        enc_outputs, enc_feature, enc_hidden = self.encoder(text_batch, text_batch_len, hidden_state)
+        enc_outputs, enc_feature, enc_hidden = self.encoder.forward(text_batch, text_batch_len, hidden_state)
 
-        h_c_1 = self.reduced_net(enc_hidden)
+        h_c_1 = self.reduced_net.forward(enc_hidden)
 
         c_t_1 = Variable(torch.zeros((100, 2 * self.para.hid_size)))
         coverage = Variable(torch.zeros(text_batch.size()))
@@ -302,11 +302,11 @@ class Pointer_Generator(nn.Module):
         step_loss_rec = []
 
         for i in range(max_len):
-            final_dist, h_c, c_t, attn_dist, p_gen, coverage_new = self.decoder(headline_batch_no[:, i], h_c_1,
-                                                                                enc_outputs, enc_feature,
-                                                                                text_batch_padmask, c_t_1,
-                                                                                text_batch_oov,
-                                                                                text_batch, coverage, i)
+            final_dist, h_c, c_t, attn_dist, p_gen, coverage_new = self.decoder.forward(headline_batch_no[:, i], h_c_1,
+                                                                                        enc_outputs, enc_feature,
+                                                                                        text_batch_padmask, c_t_1,
+                                                                                        text_batch_oov,
+                                                                                        text_batch, coverage, i)
             # Record distribution for GAN
             dist[:, i, :] = final_dist
 
@@ -347,7 +347,7 @@ class GAN:
         self.dis_criterion = nn.BCEWithLogitsLoss()
 
         # Optimizer
-        self.parameter = list(self.generator.encoder.parameters()) + list(self.generator.decoder.parameters())\
+        self.parameter = list(self.generator.encoder.parameters()) + list(self.generator.decoder.parameters()) \
                          + list(self.generator.reduced_net.parameters())
         self.gen_optimizer = optim.Adam(self.parameter, lr=pb.gen_lr)
         self.dis_optimizer = optim.Adam(self.discriminator.parameters(), lr=pb.dis_lr)
@@ -357,10 +357,9 @@ class GAN:
         loss = 0
         for text_batch, hl_batch, text_batch_padmask, headline_batch_padmask, text_batch_len, \
             headline_batch_len, text_batch_oov, headline_batch_oov, text_batch_no, headline_batch_no in GenDataIter:
-
             # h = self.generator.init_hidden()
             _, l = self.generator(text_batch, text_batch_len, text_batch_padmask, text_batch_oov,
-                hl_batch, headline_batch_len, headline_batch_no, headline_batch_padmask)
+                                  hl_batch, headline_batch_len, headline_batch_no, headline_batch_padmask)
 
             self.gen_optimizer.zero_grad()
             l.backward()
@@ -389,7 +388,7 @@ class GAN:
             accuracy += torch.sum(torch.tensor(pred_y.argmax(dim=-1) == y)).item()
             count += x.size(0)
 
-        return accuracy/count
+        return accuracy / count
 
     # compromised version of adversarial training w/o policy gradient
     def train_gan(self, data_loader):
@@ -405,10 +404,10 @@ class GAN:
 
             positive = headline_pad[idx, :]
             samples = text_pad[idx, :]
-            samples = torch.transpose(samples, 0, 1)   # due to lstm dimension reverse issue
+            samples = torch.transpose(samples, 0, 1)  # due to lstm dimension reverse issue
             samples_len = text_len[idx]
             negative = self.generator.predict(samples, samples_len, torch.transpose(positive, 0, 1))
-            negative = torch.transpose(negative, 0, 1)   # due to lstm dimension reverse issue
+            negative = torch.transpose(negative, 0, 1)  # due to lstm dimension reverse issue
             mixed = DisDataLoader(positive, negative)
 
             for epoch in range(pb.k):
@@ -417,22 +416,25 @@ class GAN:
         print('==============================================')
         print('adversarial training begins')
         for j in range(pb.gan_epochs):
-            for text_train_pad, headline_train_pad, text_train_lengths, headline_train_lengths in data_loader:
-                text_train_pad = torch.transpose(text_train_pad, 0, 1)
-                headline_train_pad = torch.transpose(headline_train_pad, 0, 1)
-                text_train_pad = text_train_pad[:text_train_lengths.max()]
-                headline_train_pad = headline_train_pad[:headline_train_lengths.max()]
+            for text_batch, hl_batch, text_batch_padmask, headline_batch_padmask, text_batch_len, headline_batch_len, text_batch_oov, headline_batch_oov, text_batch_no, headline_batch_no in data_loader:
+                text_train_pad = torch.transpose(text_batch, 0, 1)
+                headline_train_pad = torch.transpose(hl_batch, 0, 1)
+                text_train_pad = text_train_pad[:text_batch_len.max()]
+                headline_train_pad = headline_train_pad[:headline_batch_len.max()]
                 if pb.gpu:
-                    text_train_pad.cuda(), headline_train_pad.cuda(), text_train_lengths.cuda()
+                    text_train_pad.cuda(), headline_train_pad.cuda(), text_batch_len.cuda()
 
-                pred_y = self.generator.forward(text_train_pad, text_train_lengths, headline_train_pad)
+                pred_y = self.generator.forward(text_train_pad, text_batch_len, headline_train_pad)
                 outputs_flatten = pred_y[1:].view(-1, pred_y.shape[-1])
                 hl_flatten = headline_train_pad[1:].reshape(-1)
 
-                ce_loss = self.gen_criterion(outputs_flatten, hl_flatten)
+                ce_loss = self.generator.forward(text_batch, hl_batch, text_batch_padmask, headline_batch_padmask,
+                                                 text_batch_len,
+                                                 headline_batch_len, text_batch_oov, headline_batch_oov, text_batch_no,
+                                                 headline_batch_no)
 
                 positive = headline_train_pad
-                negative = self.generator.predict(text_train_pad, text_train_lengths, positive)
+                negative = self.generator.predict(text_train_pad, text_batch_len, positive)
                 negative = torch.transpose(negative, 0, 1)  # due to lstm dimension reverse issue
                 dis_pred_y = self.discriminator.forward(negative).view(-1)
 
@@ -449,7 +451,7 @@ class GAN:
 
                 for step in range(pb.d_steps):
                     # random sample true headline batch_size
-                    idx = torch.tensor(random.randint(0, pb.num_samples, size=pb.batch_size*5)).long()
+                    idx = torch.tensor(random.randint(0, pb.num_samples, size=pb.batch_size * 5)).long()
 
                     positive = headline_pad[idx, :]
                     samples = text_pad[idx, :]
